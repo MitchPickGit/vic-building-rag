@@ -35,6 +35,7 @@ _bridge_streamlit_secrets()
 from lib.retrieval import VectorRetriever, load_all_chunks
 from lib.answer import answer_question
 from lib.citation_graph import CitationGraph
+from lib.permit_classifier import classify as classify_permits
 
 
 CORPUS_PATHS = ["building_act_chunks.jsonl", "building_regs_chunks.jsonl"]
@@ -132,6 +133,23 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 
+def _render_permit_notices(notices):
+    """Render the dual-permit warning + per-regime notice cards."""
+    st.warning(
+        "⚠️ **Heads up — this question may also involve regulation outside "
+        "the Building Act.** The answer below covers building-permit "
+        "requirements only. The following parallel regimes may also apply:"
+    )
+    for n in notices:
+        # `n` may be a PermitNotice dataclass (live) or a dict (replayed
+        # from session_state). Handle both.
+        headline = n.headline if hasattr(n, "headline") else n["headline"]
+        body = n.body if hasattr(n, "body") else n["body"]
+        with st.container(border=True):
+            st.markdown(f"**{headline}**")
+            st.caption(body)
+
+
 def _render_meta(meta: dict):
     """Render the post-answer metadata (cited sections, retrieved chunks, etc.)."""
     is_clarification = meta.get("confidence") == "needs_clarification"
@@ -203,6 +221,10 @@ if "history" not in st.session_state:
 # Replay history
 for turn in st.session_state.history:
     with st.chat_message(turn["role"]):
+        # Permit notices render at the TOP of an assistant turn, before
+        # the answer text — so the warning is visible before the answer.
+        if turn["role"] == "assistant" and turn.get("meta", {}).get("permit_notices"):
+            _render_permit_notices(turn["meta"]["permit_notices"])
         st.markdown(turn["content"])
         if "meta" in turn:
             _render_meta(turn["meta"])
@@ -239,6 +261,11 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Dual-permit classifier runs against the new question. Notices are
+    # attached to the assistant turn's meta so they replay with the
+    # transcript when the user scrolls back through history.
+    permit_notices = classify_permits(prompt)
+
     # Build the conversation history that gets passed into answer_question.
     # Strip our local meta — only role + content go to the API.
     api_history = [
@@ -249,6 +276,11 @@ if prompt:
 
     # Render assistant turn with spinner
     with st.chat_message("assistant"):
+        # Show the dual-permit notice ABOVE the answer so the user
+        # can't miss it. Same rendering path as on history replay.
+        if permit_notices:
+            _render_permit_notices(permit_notices)
+
         with st.spinner("Searching legislation and drafting answer…"):
             try:
                 t0 = time.time()
@@ -279,6 +311,10 @@ if prompt:
                 "retrieved_chunks": result.retrieved_chunks,
                 "rewritten_queries": result.rewritten_queries,
                 "elapsed_s": elapsed,
+                "permit_notices": [
+                    {"kind": n.kind, "headline": n.headline, "body": n.body}
+                    for n in permit_notices
+                ],
             }
             _render_meta(meta)
             st.caption(f"⏱️ Generated in {elapsed:.1f}s")
