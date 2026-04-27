@@ -35,15 +35,20 @@ import anthropic
 
 from lib.retrieval import VectorRetriever
 from lib.query_rewriter import rewrite_query
+from lib.reranker import rerank_chunks
 
 
 load_dotenv(override=True)
 
 MODEL = "claude-sonnet-4-6"
 
-# Per-query retrieval depth, then unioned across queries
+# Per-query retrieval depth, then unioned across queries.
+# CANDIDATE_POOL_SIZE controls how many chunks we feed to the reranker;
+# RETRIEVAL_TOP_N is what survives to Claude.
 PER_QUERY_TOP_K = 8
+CANDIDATE_POOL_SIZE = 25      # union-deduped, before rerank
 RETRIEVAL_TOP_N = 12          # final chunks passed to Claude
+USE_RERANKER = True           # toggle for ablation testing
 
 OOS_GATE = 0.10               # below this → canned OOS (very rarely fires;
                               # the strict-citation prompt is the real gate)
@@ -202,7 +207,8 @@ class AnswerResult:
     answer: str
     cited_sections: list[str]
     confidence: str
-    top_retrieval_score: float
+    top_retrieval_score: float          # cosine before rerank
+    top_rerank_score: Optional[float]   # cross-encoder score after rerank (if used)
     retrieved_chunks: list[dict]
     hallucinated_citations: list[str]
     out_of_scope_gated: bool
@@ -294,9 +300,9 @@ def make_oos_result(question: str, mode: Mode, top_score: float,
     return AnswerResult(
         question=question, mode=mode, answer=canned,
         cited_sections=[], confidence="out_of_scope",
-        top_retrieval_score=top_score, retrieved_chunks=[],
-        hallucinated_citations=[], out_of_scope_gated=True,
-        usage=None, raw_response=None,
+        top_retrieval_score=top_score, top_rerank_score=None,
+        retrieved_chunks=[], hallucinated_citations=[],
+        out_of_scope_gated=True, usage=None, raw_response=None,
         rewritten_queries=rewritten_queries,
     )
 
@@ -376,11 +382,35 @@ def answer_question(
             # the answer pipeline on a rewrite glitch.
             queries = [question]
 
-    # 2. Multi-query retrieval
-    retrieved_chunks, top_score = multi_query_retrieve(retriever, queries)
+    # 2. Multi-query retrieval — get a wide candidate pool to rerank
+    candidate_pool, top_score = multi_query_retrieve(
+        retriever, queries,
+        per_query_top_k=PER_QUERY_TOP_K,
+        final_top_n=CANDIDATE_POOL_SIZE if USE_RERANKER else RETRIEVAL_TOP_N,
+    )
 
-    if top_score < OOS_GATE or not retrieved_chunks:
+    if top_score < OOS_GATE or not candidate_pool:
         return make_oos_result(question, mode, top_score, rewritten_queries=queries)
+
+    # 3. Rerank against the original user question.
+    # The reranker is a cross-encoder that judges (query, doc) jointly,
+    # which fixes the bi-encoder vector retriever's tendency to surface
+    # adjacent-but-wrong sections (e.g. retrieving 25BF when 25J is the
+    # right answer). Pass the ORIGINAL question, not the rewritten queries
+    # — the candidate pool already covers the rewritten phrasings.
+    top_rerank_score: Optional[float] = None
+    if USE_RERANKER:
+        try:
+            reranked = rerank_chunks(question, candidate_pool, top_k=RETRIEVAL_TOP_N)
+            retrieved_chunks = [c for _, c in reranked]
+            top_rerank_score = reranked[0][0] if reranked else None
+        except Exception as e:
+            # Reranker failure should NOT block the answer pipeline.
+            # Fall back to vector ordering, log the issue.
+            print(f"  warn: reranker failed ({e!r}), falling back to vector ranking")
+            retrieved_chunks = candidate_pool[:RETRIEVAL_TOP_N]
+    else:
+        retrieved_chunks = candidate_pool[:RETRIEVAL_TOP_N]
 
     # 3. Build the user message + messages array including history
     chunks_block = format_chunks_for_prompt(retrieved_chunks)
@@ -440,6 +470,7 @@ def answer_question(
         cited_sections=cited,
         confidence=parsed["confidence"],
         top_retrieval_score=top_score,
+        top_rerank_score=top_rerank_score,
         retrieved_chunks=retrieved_chunks,
         hallucinated_citations=hallucinated,
         out_of_scope_gated=False,

@@ -197,6 +197,50 @@ def merge_multiline_part_heading(body_lines):
     return merged
 
 
+def merge_multiline_division_heading(body_lines):
+    """Division headings often wrap to a second bold line (e.g.
+    'Division 3A—Certificates of consent for' + 'owner-builders'). Without
+    merging, the division metadata is truncated and downstream retrieval
+    misses queries that depend on the full division name."""
+    merged = []
+    i = 0
+    while i < len(body_lines):
+        ln = body_lines[i]
+        m_div = RE_DIVISION.match(ln["text"])
+        is_div_heading = (
+            ln["is_bold"]
+            and DIVISION_HEADING_SIZE <= ln["size"] < PART_HEADING_SIZE
+            and m_div is not None
+        )
+        if is_div_heading:
+            combined = [ln["text"]]
+            j = i + 1
+            last_y = ln["y"]
+            while j < len(body_lines):
+                nxt = body_lines[j]
+                if not (nxt["is_bold"]
+                        and DIVISION_HEADING_SIZE <= nxt["size"] < PART_HEADING_SIZE
+                        and nxt["y"] - last_y < 25
+                        and not RE_PART.match(nxt["text"])
+                        and not RE_DIVISION.match(nxt["text"])
+                        and not RE_SUBDIV.match(nxt["text"])
+                        and not RE_SECTION.match(nxt["text"])
+                        and not RE_SUBSECTION.match(nxt["text"])):
+                    break
+                combined.append(nxt["text"])
+                last_y = nxt["y"]
+                j += 1
+            if len(combined) > 1:
+                merged_line = dict(ln)
+                merged_line["text"] = " ".join(combined)
+                merged.append(merged_line)
+                i = j
+                continue
+        merged.append(ln)
+        i += 1
+    return merged
+
+
 def merge_multiline_section_heading(body_lines):
     """Section titles sometimes wrap to a second bold line.
     Without this, the wrapped continuation leaks into the section's body."""
@@ -321,6 +365,7 @@ def parse_act():
 
             body_lines = [ln for ln in body_lines if not is_header_line(ln["text"])]
             body_lines = merge_multiline_part_heading(body_lines)
+            body_lines = merge_multiline_division_heading(body_lines)
             body_lines = merge_multiline_section_heading(body_lines)
 
             margin_lines = [

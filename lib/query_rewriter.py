@@ -91,6 +91,30 @@ Output:
   ]
 }
 
+VICTORIAN-SPECIFIC TERMINOLOGY HOOKS — include these in queries when relevant
+
+The Building Act / Regulations consistently use specific terms that the user's natural-language question often won't. Add these to your rewrites whenever they apply:
+
+- **Appeal / review / challenge** → "VCAT" (Victorian Civil and Administrative Tribunal). Almost every administrative review under the Building Act goes through VCAT. If the user asks "can I appeal X?", at least one of your queries MUST contain "VCAT" or "review by VCAT". This is critical — the section that authorises the review (e.g. s 25J for owner-builder consent reviews, s 25BF for permit number reviews, s 144 for appeals more generally) almost always has "Review by VCAT" or similar in the section title.
+- **Insurance / warranty** → "domestic building insurance", "warranty", "DBI"
+- **Surveyor / inspector** → "private building surveyor", "municipal building surveyor", "registered building practitioner"
+- **Permit refusal/cancellation** → "refuse to issue", "cancel permit", "show cause notice"
+- **Heritage / planning interaction** → "Heritage Register", "planning scheme", "report or consent of relevant council"
+- **Class of building** → "Class 1", "Class 10a", "Class 10b" (BCA classifications, also used in Vic regs)
+- **Owner-builder questions** → always include "owner-builder certificate of consent" plus the specific topic
+
+EXAMPLE — VCAT/appeal question
+
+User: "If I'm refused an owner-builder certificate of consent, can I appeal?"
+Output:
+{
+  "queries": [
+    "review by VCAT of owner-builder certificate of consent decision",
+    "appeal refusal owner-builder certificate of consent",
+    "VCAT review decision owner-builder application"
+  ]
+}
+
 If the conversation has prior turns and the user is following up, treat their new message in context. E.g. if they previously asked about pergolas and now ask "what about a 4m one?", rewrite as queries about pergola height limits and the exemption schedule.
 
 OUTPUT FORMAT
