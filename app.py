@@ -72,13 +72,22 @@ st.caption(
 with st.sidebar:
     st.header("Settings")
     mode = st.radio(
-        "Audience",
-        options=["builder", "homeowner"],
+        "Who are you?",
+        options=["homeowner", "owner-builder", "builder"],
         format_func=lambda m: {
-            "homeowner": "🏠 Homeowner — plain English",
-            "builder": "🔨 Builder — technical, with penalties",
+            "homeowner": "🏠 Homeowner — building work through a builder",
+            "owner-builder": "🛠️ Owner-builder — doing the work yourself",
+            "builder": "🔨 Builder / Surveyor — registered practitioner",
         }[m],
         index=0,
+        help=(
+            "**Homeowner**: plain-English answers, redirects to surveyor / council / "
+            "owners corp where relevant.  \n"
+            "**Owner-builder**: procedural step-by-step, emphasising certificate of "
+            "consent, insurance, timing, and warranty obligations.  \n"
+            "**Builder**: technical detail with full citations, penalties, "
+            "amendment history, and cross-references."
+        ),
     )
 
     st.divider()
