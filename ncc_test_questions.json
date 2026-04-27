@@ -1,0 +1,117 @@
+{
+  "description": "NCC 2022 Volume Two test questions for retrieval-only evaluation. expected_provisions are NCC provision IDs that should appear in the top-K retrieved chunks. Designed to cover the major user-facing topics in residential construction.",
+  "questions": [
+    {
+      "id": "ncc-1",
+      "q": "What classes of building are Class 1 — what makes a building Class 1?",
+      "expected_provisions": ["A6G2"],
+      "topic": "classification",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ncc-2",
+      "q": "What is a Class 10a building?",
+      "expected_provisions": ["A6G11"],
+      "topic": "classification",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ncc-3",
+      "q": "What is the minimum ceiling height for a habitable room in a house?",
+      "expected_provisions": ["H4P2", "H4D4"],
+      "topic": "room heights",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ncc-4",
+      "q": "What's the maximum riser height for stairs in a Class 1 building?",
+      "expected_provisions": ["H5D2"],
+      "topic": "stairways",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-5",
+      "q": "Do I need a fall prevention barrier on a deck more than 1m above ground?",
+      "expected_provisions": ["H5P2", "H5D3"],
+      "topic": "balustrades",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-6",
+      "q": "Where do I need smoke alarms in a new house?",
+      "expected_provisions": ["H3D9", "H3P2"],
+      "topic": "fire safety",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ncc-7",
+      "q": "What waterproofing is required in a bathroom?",
+      "expected_provisions": ["H4D2", "H4D3", "H4P1"],
+      "topic": "wet areas",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-8",
+      "q": "What ventilation is required for a bedroom?",
+      "expected_provisions": ["H4P5", "H4D7"],
+      "topic": "ventilation",
+      "difficulty": "easy"
+    },
+    {
+      "id": "ncc-9",
+      "q": "What is the minimum window or natural light requirement in a habitable room?",
+      "expected_provisions": ["H4P4", "H4D6"],
+      "topic": "natural light",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-10",
+      "q": "What energy efficiency requirements apply to new houses — what's the heating load limit?",
+      "expected_provisions": ["H6P1", "S44C2"],
+      "topic": "energy efficiency",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-11",
+      "q": "What construction requirements apply in a bushfire-prone area?",
+      "expected_provisions": ["H7P5", "H7D4"],
+      "topic": "bushfire",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-12",
+      "q": "What pool barrier requirements apply to a swimming pool?",
+      "expected_provisions": ["H7P1", "H7D2"],
+      "topic": "swimming pools",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-13",
+      "q": "What weatherproofing is required for an external wall?",
+      "expected_provisions": ["H2P2", "H2D6"],
+      "topic": "weatherproofing",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-14",
+      "q": "What footings and slab requirements apply for a new house?",
+      "expected_provisions": ["H1D2", "H1D3", "H1P1"],
+      "topic": "structure",
+      "difficulty": "hard"
+    },
+    {
+      "id": "ncc-15",
+      "q": "What does compliance with the NCC actually mean — Performance Solution vs Deemed-to-Satisfy?",
+      "expected_provisions": ["A2G1", "A2G2", "A2G3", "A2G4"],
+      "topic": "compliance pathways",
+      "difficulty": "medium"
+    },
+    {
+      "id": "ncc-16",
+      "q": "What variations apply in Victoria for flood hazard areas?",
+      "expected_provisions": ["VIC H1D10"],
+      "topic": "victoria-specific",
+      "difficulty": "hard"
+    }
+  ]
+}
