@@ -37,6 +37,7 @@ from lib.retrieval import VectorRetriever
 from lib.query_rewriter import rewrite_query
 from lib.reranker import rerank_chunks
 from lib.citation_graph import CitationGraph
+from lib.authority_reranker import classify_query_shape, apply_authority_boost
 
 
 load_dotenv(override=True)
@@ -47,9 +48,13 @@ MODEL = "claude-sonnet-4-6"
 # CANDIDATE_POOL_SIZE controls how many chunks we feed to the reranker;
 # RETRIEVAL_TOP_N is what survives to Claude.
 PER_QUERY_TOP_K = 8
-CANDIDATE_POOL_SIZE = 25      # union-deduped, before rerank
-RETRIEVAL_TOP_N = 12          # final chunks passed to Claude
-USE_RERANKER = True           # toggle for ablation testing
+CANDIDATE_POOL_SIZE = 25       # union-deduped, before rerank
+ONE_HOP_EXPANSION_FROM = 8     # take the top-N candidates and pull what they cite
+ONE_HOP_MAX_ADDED = 8          # cap how many chunks a single hop can add
+RETRIEVAL_TOP_N = 12           # final chunks passed to Claude
+USE_RERANKER = True            # toggle for ablation testing
+USE_ONE_HOP = True             # toggle for ablation testing
+USE_AUTHORITY_BOOST = True     # toggle for ablation testing
 
 OOS_GATE = 0.10               # below this → canned OOS (very rarely fires;
                               # the strict-citation prompt is the real gate)
@@ -90,6 +95,23 @@ When the question is about a *requirement*, walk the layers top-down:
 When the chunks span layers, give a short headline answer with the most-specific citation, then briefly note the layer above (e.g. "This requirement comes from ABCB HP 11.2.2, which is the Deemed-to-Satisfy pathway for NCC H5P1, in turn adopted by reg. 109 of the Building Regulations").
 
 Don't pad answers with all four layers when only one applies. Cite the most-specific layer that actually has the answer.
+
+LAYER DISCLOSURE — start every substantive answer with the cascade tag
+
+Every answer (other than clarifying questions and out-of-scope refusals) MUST begin with a one-line layer disclosure showing the regulatory cascade you are answering from. This makes the layer fit visible to the user and lets them spot wrong-layer citations. Format the line as a quoted block:
+
+  > **Source layer:** Building Regulations 2018 (Vic) reg. 109 → NCC H6P2 → ABCB HP 13.2.5
+
+Use right-arrow `→` characters to show the cascade. Include only the layers that you actually cite — don't pad. If you only cite one layer, that layer alone is the line. Examples:
+
+  > **Source layer:** Building Act 1993 (Vic) s 16(1)
+  > **Source layer:** ABCB HP 11.2.2 (technical detail under NCC H5P1, adopted by Building Regulations 2018 reg. 109)
+
+If the question is purely structural ("how many risers can a flight have?"), the source layer is just the HP citation. If the question is layered (e.g. "do I need a permit AND what's the technical spec?"), show both: `Building Regulations 2018 reg. 23 → NCC H4P2 → ABCB HP 10.3.1`.
+
+Then proceed with the answer body using the role-specific structure (homeowner / owner-builder / builder).
+
+For clarifying questions and out_of_scope responses, OMIT the source-layer line — there's no answer to attribute.
 
 THIS IS LEGISLATION. ACCURACY IS PARAMOUNT. A wrong answer in this domain is not just embarrassing — it can lead a homeowner to break the law, a builder to face penalties, or a building surveyor to make an unsafe decision. Read these rules carefully and apply them without exception.
 
@@ -310,6 +332,7 @@ class AnswerResult:
     usage: Optional[dict]
     raw_response: Optional[dict]
     rewritten_queries: Optional[list[str]] = None  # for debugging / display
+    query_shape: Optional[str] = None              # shape classifier output
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +373,7 @@ def format_related_provisions(chunks: list[dict],
             "them in `cited_sections` — you haven't read their text. Suggest "
             "the user check them on legislation.vic.gov.au if relevant."
         )
-        for cit, ref_text in sorted(related_internal.items())[:20]:
+        for cit, ref_text in sorted(related_internal.items())[:12]:
             parts.append(f"  - {cit} (mentioned in chunks as '{ref_text}')")
         parts.append("</RELATED_PROVISIONS>")
     if external:
@@ -363,7 +386,7 @@ def format_related_provisions(chunks: list[dict],
             "relevant publisher (NCC: ncc.abcb.gov.au, AS: standards.org.au, "
             "Vic Acts: legislation.vic.gov.au)."
         )
-        for to_text, rel in sorted(external.items())[:20]:
+        for to_text, rel in sorted(external.items())[:12]:
             kind = {
                 "external_code": "NCC/BCA",
                 "external_standard": "Australian Standard",
@@ -374,7 +397,26 @@ def format_related_provisions(chunks: list[dict],
     return "\n".join(parts)
 
 
-def format_chunks_for_prompt(chunks: list[dict]) -> str:
+# Chunk-text truncation. Most answers quote 1-2 sentences from a chunk;
+# carrying the full body for every chunk in the top-12 inflates prompt
+# size unnecessarily. Truncate body text to this character cap, with
+# ellipsis. Set high enough that legal provisions aren't mangled.
+CHUNK_BODY_TRUNCATE_AT = 1500
+
+
+def _truncate(text: str, cap: int = CHUNK_BODY_TRUNCATE_AT) -> str:
+    if not text or len(text) <= cap:
+        return text
+    # Cut at a sentence boundary if possible
+    cut = text[:cap]
+    last_period = cut.rfind(". ")
+    if last_period > cap * 0.7:
+        cut = cut[:last_period + 1]
+    return cut + " […truncated; full text at legislation.vic.gov.au or ncc.abcb.gov.au]"
+
+
+def format_chunks_for_prompt(chunks: list[dict],
+                             truncate: bool = True) -> str:
     lines = ["<CHUNKS>"]
     for i, c in enumerate(chunks, start=1):
         lines.append(f"\n--- Chunk {i} ---")
@@ -391,9 +433,15 @@ def format_chunks_for_prompt(chunks: list[dict]) -> str:
         if c.get("schedule"):
             lines.append(f"schedule: {c['schedule']}")
         lines.append(f"version: {c.get('version')} (as at {c.get('version_date')})")
-        lines.append(f"text:\n{c.get('text', '')}")
+        body = c.get("text", "")
+        if truncate:
+            body = _truncate(body)
+        lines.append(f"text:\n{body}")
         if c.get("note"):
-            lines.append(f"note:\n{c['note']}")
+            note = c["note"]
+            if truncate:
+                note = _truncate(note, cap=600)
+            lines.append(f"note:\n{note}")
         if c.get("exempted_regulations"):
             lines.append(f"exempted_regulations: {c['exempted_regulations']}")
         if c.get("penalty"):
@@ -401,7 +449,9 @@ def format_chunks_for_prompt(chunks: list[dict]) -> str:
         if c.get("amendment_history"):
             lines.append(f"amendment_history: {c['amendment_history']}")
         if c.get("cross_references"):
-            lines.append(f"cross_references: {', '.join(c['cross_references'])}")
+            # Cap cross-refs list — most are noisy, only first 8 useful
+            xrefs = c["cross_references"][:8]
+            lines.append(f"cross_references: {', '.join(xrefs)}")
     lines.append("\n</CHUNKS>")
     return "\n".join(lines)
 
@@ -475,6 +525,47 @@ def make_oos_result(question: str, mode: Mode, top_score: float,
         out_of_scope_gated=True, usage=None, raw_response=None,
         rewritten_queries=rewritten_queries,
     )
+
+
+def expand_one_hop(top_chunks: list[dict],
+                   all_chunks_by_citation: dict[str, dict],
+                   graph: Optional[CitationGraph],
+                   expand_from: int = ONE_HOP_EXPANSION_FROM,
+                   max_added: int = ONE_HOP_MAX_ADDED) -> list[dict]:
+    """Given a ranked list of retrieved chunks, pull the chunks they cite
+    (one hop in the citation graph) and return the expanded list.
+
+    Why: legislation is hyperlinked by design. A chunk about "exempt building
+    work" (Sch 3) often references "section 16" of the Act. Vector retrieval
+    finds the Sch 3 chunk; one-hop expansion brings s 16 along even if the
+    embedding didn't surface it.
+
+    Constraints:
+      - Only pulls INTERNAL refs (skips external — NCC/AS/Acts not in corpus)
+      - Skips refs that are already in top_chunks (dedupe by citation)
+      - Caps the number of added chunks at max_added
+    """
+    if graph is None or not top_chunks:
+        return list(top_chunks)
+    seen = {c["citation"] for c in top_chunks}
+    added: list[dict] = []
+    for c in top_chunks[:expand_from]:
+        if len(added) >= max_added:
+            break
+        for ref in graph.outgoing(c["citation"]):
+            if len(added) >= max_added:
+                break
+            if ref["external"]:
+                continue
+            target_citation = ref.get("to_citation")
+            if not target_citation or target_citation in seen:
+                continue
+            target_chunk = all_chunks_by_citation.get(target_citation)
+            if target_chunk is None:
+                continue
+            added.append(target_chunk)
+            seen.add(target_citation)
+    return list(top_chunks) + added
 
 
 def multi_query_retrieve(retriever: VectorRetriever, queries: list[str],
@@ -563,6 +654,19 @@ def answer_question(
     if top_score < OOS_GATE or not candidate_pool:
         return make_oos_result(question, mode, top_score, rewritten_queries=queries)
 
+    # 2b. One-hop graph expansion. Legislation is hyperlinked by design — a
+    # chunk about "exempt building work" (Sch 3) often references "section 16"
+    # of the Act. Vector retrieval finds the Sch 3 chunk; one-hop brings s 16
+    # along even if the embedding didn't surface it directly. Skipped if the
+    # graph isn't available.
+    if USE_ONE_HOP and graph is not None:
+        all_by_citation = {c["citation"]: c for c in retriever.chunks}
+        candidate_pool = expand_one_hop(
+            candidate_pool, all_by_citation, graph,
+            expand_from=ONE_HOP_EXPANSION_FROM,
+            max_added=ONE_HOP_MAX_ADDED,
+        )
+
     # 3. Rerank against the original user question.
     # The reranker is a cross-encoder that judges (query, doc) jointly,
     # which fixes the bi-encoder vector retriever's tendency to surface
@@ -570,10 +674,24 @@ def answer_question(
     # right answer). Pass the ORIGINAL question, not the rewritten queries
     # — the candidate pool already covers the rewritten phrasings.
     top_rerank_score: Optional[float] = None
+    query_shape: Optional[str] = None
     if USE_RERANKER:
         try:
-            reranked = rerank_chunks(question, candidate_pool, top_k=RETRIEVAL_TOP_N)
-            retrieved_chunks = [c for _, c in reranked]
+            # Take a slightly larger reranker top-k than RETRIEVAL_TOP_N so the
+            # authority boost has room to swap items at the boundary.
+            rerank_pool_size = RETRIEVAL_TOP_N + 4 if USE_AUTHORITY_BOOST else RETRIEVAL_TOP_N
+            reranked = rerank_chunks(question, candidate_pool, top_k=rerank_pool_size)
+
+            # 3b. Authority-aware boost: nudge the rerank order toward the
+            # layer that best fits the query shape. Boost magnitude is
+            # tiny (±0.02) — won't override genuine semantic ranking, just
+            # breaks ties in favour of the correct layer.
+            if USE_AUTHORITY_BOOST:
+                shape, _confidence = classify_query_shape(question, client=client)
+                query_shape = shape
+                reranked = apply_authority_boost(reranked, shape)
+
+            retrieved_chunks = [c for _, c in reranked[:RETRIEVAL_TOP_N]]
             top_rerank_score = reranked[0][0] if reranked else None
         except Exception as e:
             # Reranker failure should NOT block the answer pipeline.
@@ -660,4 +778,5 @@ def answer_question(
         },
         raw_response=parsed,
         rewritten_queries=queries,
+        query_shape=query_shape,
     )

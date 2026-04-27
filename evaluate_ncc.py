@@ -24,6 +24,7 @@ CHUNK_PATHS = [
     "building_act_chunks.jsonl",
     "building_regs_chunks.jsonl",
     "ncc_chunks.jsonl",
+    "housing_provisions_chunks.jsonl",
 ]
 QUESTIONS_PATH = "ncc_test_questions.json"
 
@@ -32,12 +33,18 @@ FINAL_TOP_N    = 10      # reranked top-K we evaluate hit@1/3/5/10 against
 
 
 def chunk_provision_id(c: dict) -> str | None:
-    """Return the NCC provision id for a chunk, or None if it's not NCC."""
-    if c.get("doc_type") != "ncc":
+    """Return the provision id for a chunk if it's NCC or Housing
+    Provisions. Returns None for Act/Regs chunks (out of scope for the
+    NCC test set)."""
+    doc = c.get("doc_type", "")
+    if doc not in ("ncc", "housing_provisions"):
         return None
     sn = c.get("section_number") or ""
     sub = c.get("subsection") or ""
-    return f"{sn}{sub}" if sub else sn
+    base = f"{sn}{sub}" if sub else sn
+    if doc == "housing_provisions":
+        return f"HP {base}"  # prefix so we can distinguish
+    return base
 
 
 def matches_expected(provision_id: str, expected_list: list[str]) -> bool:

@@ -25,7 +25,7 @@
     {
       "id": "ncc-4",
       "q": "What's the maximum riser height for stairs in a Class 1 building?",
-      "expected_provisions": ["H5D2"],
+      "expected_provisions": ["H5D2", "HP 11.2.2", "HP 11.2.2(1)", "HP 11.2.2(5)"],
       "topic": "stairways",
       "difficulty": "medium"
     },
@@ -39,7 +39,7 @@
     {
       "id": "ncc-6",
       "q": "Where do I need smoke alarms in a new house?",
-      "expected_provisions": ["H3D9", "H3P2"],
+      "expected_provisions": ["H3D9", "H3P2", "HP 9.5", "HP 9.5.1", "HP 9.5.2", "HP 9.5.3"],
       "topic": "fire safety",
       "difficulty": "easy"
     },
@@ -95,7 +95,7 @@
     {
       "id": "ncc-14",
       "q": "What footings and slab requirements apply for a new house?",
-      "expected_provisions": ["H1D2", "H1D3", "H1P1"],
+      "expected_provisions": ["H1D2", "H1D3", "H1P1", "H1D4", "HP 4.2.1", "HP 4.2.2"],
       "topic": "structure",
       "difficulty": "hard"
     },
