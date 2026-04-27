@@ -26,6 +26,10 @@ _zip_extract/
 test_report*.json
 test_report*.md
 
+# Runtime SQLite db — query logs + builder feedback. Stays per-deployment;
+# downloadable via the admin view. Not for version control.
+usage_log.db
+
 # Notes
 # embeddings.npy and embeddings_cache.jsonl ARE committed so the deployed
 # app doesn't need to re-embed on every cold start ($$$ + slow). Generated
