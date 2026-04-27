@@ -64,6 +64,11 @@ class BM25Retriever:
                 c.get("penalty"),
                 c.get("note"),
                 c.get("exempted_regulations"),
+                # NCC-specific structural fields
+                c.get("part"),
+                c.get("subpart"),
+                c.get("specification"),
+                c.get("schedule"),
             ]))
             docs.append(tokenize(search_text))
         self.docs = docs

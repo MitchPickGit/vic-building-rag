@@ -392,7 +392,11 @@ class CitationGraph:
 
 def _cli_build():
     sys.stdout.reconfigure(encoding="utf-8")
-    chunk_paths = ["building_act_chunks.jsonl", "building_regs_chunks.jsonl"]
+    chunk_paths = [
+        "building_act_chunks.jsonl",
+        "building_regs_chunks.jsonl",
+        "ncc_chunks.jsonl",
+    ]
     stats = build_graph(chunk_paths, db_path=DB_PATH)
     print(f"\nWrote {stats['total_rows']:,} reference rows to {DB_PATH}")
     print(f"  resolved internal: {stats['resolved_internal']:,}")

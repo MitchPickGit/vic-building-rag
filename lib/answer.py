@@ -63,7 +63,13 @@ Mode = Literal["homeowner", "owner-builder", "builder"]
 # System prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a legal information assistant for Victorian building legislation. You help both homeowners and building professionals understand the Building Act 1993 (Vic) and the Building Regulations 2018 (Vic).
+SYSTEM_PROMPT = """You are a legal information assistant for Victorian building legislation. You help both homeowners and building professionals understand:
+
+  1. **Building Act 1993 (Vic)** — primary state legislation (authority level 1).
+  2. **Building Regulations 2018 (Vic)** — secondary legislation made under the Act (authority level 2).
+  3. **National Construction Code 2022 Volume Two** — federal-level technical residential code, adopted by the Building Regulations 2018 for Class 1 and Class 10 buildings (authority level 3, layered under the Act/Regs).
+
+The three documents form a layered stack: the Act creates legal frameworks and offences; the Regulations operationalise them and adopt the NCC by reference; the NCC supplies the technical pass/fail criteria. A complete answer often spans more than one layer — cite each one where it applies and be explicit about which document each citation comes from.
 
 THIS IS LEGISLATION. ACCURACY IS PARAMOUNT. A wrong answer in this domain is not just embarrassing — it can lead a homeowner to break the law, a builder to face penalties, or a building surveyor to make an unsafe decision. Read these rules carefully and apply them without exception.
 
@@ -81,7 +87,11 @@ CORE RULES — read these carefully
 
 5. Always end the answer text with a currency/authority disclaimer using the actual version field from the chunks (e.g. "Based on Building Act 1993 (Vic) Authorised Version 146 as at 1 April 2026. Verify currency at legislation.vic.gov.au before acting."). Use the real version visible in the chunks, not a placeholder.
 
-6. Output must conform to the JSON schema. The "cited_sections" array must list every section identifier referenced in the answer text — none missing, none extra. For Act sections use the bare number like "16(1)". For Regulations use "reg. 23" or "reg. 24(1)". For Schedule 3 items use "Sch 3 item 16".
+6. Output must conform to the JSON schema. The "cited_sections" array must list every section identifier referenced in the answer text — none missing, none extra. Use these citation forms:
+   - **Act sections**: bare number like `"16(1)"`, `"25J"`
+   - **Regulations**: `"reg. 23"` or `"reg. 24(1)"`
+   - **Schedule 3 (Regs)**: `"Sch 3 item 16"`
+   - **NCC provisions**: `"NCC H6P1(1)"`, `"NCC A6G2"`, `"NCC VIC H1D10"` (the NCC's own provision codes — Section letter + Part number + Subpart letter [G/P/D/F/V/O] + Provision number, optionally prefixed by `VIC` for Schedule 10 Vic overrides)
 
 MULTI-TURN CONVERSATION RULES
 
@@ -393,6 +403,13 @@ def section_match_keys(c: dict) -> set[str]:
     if c.get("doc_type") == "regulation_schedule" and c.get("item_number"):
         keys.add(f"Sch 3 item {c['item_number']}")
         keys.add(f"Sch3-{c['item_number']}")
+    if c.get("doc_type") == "ncc":
+        # NCC provisions like "H6P1", "VIC H1D10", "S1C5"
+        keys.add(f"NCC {sn}")
+        keys.add(f"NCC 2022 Vol 2 {sn}")
+        if sub:
+            keys.add(f"NCC {sn}{sub}")
+            keys.add(f"NCC 2022 Vol 2 {sn}{sub}")
     return {k.strip() for k in keys if k.strip()}
 
 
