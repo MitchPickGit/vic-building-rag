@@ -42,6 +42,7 @@ CORPUS_PATHS = [
     "building_act_chunks.jsonl",
     "building_regs_chunks.jsonl",
     "ncc_chunks.jsonl",
+    "housing_provisions_chunks.jsonl",
 ]
 
 
@@ -118,6 +119,7 @@ with st.sidebar:
     st.caption("• Building Regulations 2018 — Authorised v028 (26 November 2025)")
     st.caption("• Schedule 3 (exempt building work) — broken out per item")
     st.caption("• **NCC 2022 Volume Two** — Class 1 + 10 buildings (residential), incl. Vic Schedule 10 overrides")
+    st.caption("• **ABCB Housing Provisions Standard 2022** — the technical detail that NCC Vol 2 defers to (stair geometry, R-values per climate zone, footing classifications, BAL distances, span tables)")
     st.caption("Schedules 1, 2, 4-13 of the Regulations and other NCC volumes are not yet indexed.")
 
     st.divider()
@@ -347,12 +349,13 @@ st.caption(
     "**Sources & attribution.** The Building Act 1993 (Vic) and Building "
     "Regulations 2018 (Vic) are reproduced from the authorised versions "
     "published at [legislation.vic.gov.au](https://www.legislation.vic.gov.au). "
-    "The National Construction Code 2022 Volume Two is reproduced under the "
+    "The National Construction Code 2022 Volume Two and the ABCB Housing "
+    "Provisions Standard 2022 are reproduced under the "
     "[Creative Commons Attribution 4.0 International licence](https://creativecommons.org/licenses/by/4.0/), "
     "© Commonwealth of Australia and the States and Territories of Australia 2022, "
-    "published by the Australian Building Codes Board. The NCC text has been "
-    "extracted, chunked, and re-presented for question-answering — view the "
-    "official version at [ncc.abcb.gov.au](https://ncc.abcb.gov.au)."
+    "published by the Australian Building Codes Board. These ABCB texts have "
+    "been extracted, chunked, and re-presented for question-answering — view "
+    "the official versions at [ncc.abcb.gov.au](https://ncc.abcb.gov.au)."
 )
 st.caption(
     "_This tool is not produced by, affiliated with, or endorsed by the "

@@ -39,6 +39,7 @@ CHUNK_FILES = [
     "building_act_chunks.jsonl",
     "building_regs_chunks.jsonl",
     "ncc_chunks.jsonl",
+    "housing_provisions_chunks.jsonl",
 ]
 CACHE_JSONL = "embeddings_cache.jsonl"
 EMBEDDINGS_NPY = "embeddings.npy"

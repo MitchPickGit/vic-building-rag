@@ -396,6 +396,7 @@ def _cli_build():
         "building_act_chunks.jsonl",
         "building_regs_chunks.jsonl",
         "ncc_chunks.jsonl",
+        "housing_provisions_chunks.jsonl",
     ]
     stats = build_graph(chunk_paths, db_path=DB_PATH)
     print(f"\nWrote {stats['total_rows']:,} reference rows to {DB_PATH}")
