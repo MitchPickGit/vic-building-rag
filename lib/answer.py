@@ -36,6 +36,7 @@ import anthropic
 from lib.retrieval import VectorRetriever
 from lib.query_rewriter import rewrite_query
 from lib.reranker import rerank_chunks
+from lib.citation_graph import CitationGraph
 
 
 load_dotenv(override=True)
@@ -160,6 +161,24 @@ Each chunk has: citation, section_number, section_title, subsection (if any), pa
 
 When multiple chunks address the question, cite the most specific. A user asking "can a surveyor refuse to issue a permit?" is better served by s 24 ("Refusal to issue a permit") than s 16 ("General permit offences"), even if both are retrieved.
 
+HOW TO USE THE RELATED_PROVISIONS BLOCK (if present)
+
+The user message may include a <RELATED_PROVISIONS> block listing internal provisions that the chunks above CROSS-REFERENCE but that are NOT themselves in the CHUNKS block. These are real provisions in the Vic legislation that are mentioned by sections you can see, but whose text you have not read.
+
+  - You MAY mention these by citation in your answer text — e.g. "this requirement is qualified by s 25AE, which the chunk text references for builder change-of-status events". This adds value because the user gets to see the call-up chain.
+  - You MUST NOT include them in `cited_sections`. That array is for provisions whose text you have actually read in this turn.
+  - If a related provision is critical to the answer, suggest the user pull it up on legislation.vic.gov.au — don't speculate about its content.
+
+HOW TO USE THE EXTERNAL_REFERENCES BLOCK (if present)
+
+The user message may include an <EXTERNAL_REFERENCES> block listing documents OUTSIDE the indexed corpus that the chunks reference — National Construction Code (NCC/BCA), Australian Standards (AS), or other Victorian Acts.
+
+  - The legislation works as a layered system. The Building Regulations 2018 routinely adopt the NCC/BCA by reference; the BCA references Australian Standards. Many provisions only make sense if the user knows there's a downstream document.
+  - When an external reference is material to the answer, NAME IT EXPLICITLY. E.g. "This regulation requires compliance with AS 3959 (bushfire construction), which is a separate Australian Standard you would need to obtain." Or "Schedule 3 item 1 references BCA Volume Two for the building class definitions — check NCC Volume Two at ncc.abcb.gov.au."
+  - Direct the user to the publisher: NCC at ncc.abcb.gov.au, Australian Standards at standards.org.au, other Vic legislation at legislation.vic.gov.au.
+  - DO NOT include external references in `cited_sections` — only Vic legislation provisions go there.
+  - DO NOT speculate about external content. If the user's question hinges on the NCC/AS/another Act, say so and tell them where to look.
+
 CLARIFYING QUESTION GUIDANCE — when to ask, how to ask
 
 Ask a clarifying question when:
@@ -266,6 +285,64 @@ class AnswerResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def format_related_provisions(chunks: list[dict],
+                              graph: Optional[CitationGraph]) -> str:
+    """Build a short block listing internal provisions that the retrieved
+    chunks reference but that aren't themselves in the retrieved set, plus
+    external references (NCC/AS/other Acts) — so the model can surface
+    them in its answer.
+
+    Returns the empty string when there's nothing useful to add.
+    """
+    if graph is None:
+        return ""
+    retrieved_cits = {c["citation"] for c in chunks}
+    related_internal: dict[str, str] = {}    # to_citation -> reference text
+    external: dict[str, str] = {}            # to_text -> relationship_type
+
+    for c in chunks:
+        for ref in graph.outgoing(c["citation"]):
+            if ref["external"]:
+                external.setdefault(ref["to_text"], ref["relationship_type"])
+            else:
+                tgt = ref.get("to_citation")
+                if tgt and tgt != c["citation"] and tgt not in retrieved_cits:
+                    related_internal.setdefault(tgt, ref["to_text"])
+
+    parts = []
+    if related_internal:
+        parts.append("<RELATED_PROVISIONS>")
+        parts.append(
+            "Provisions that the chunks above cross-reference but that "
+            "aren't themselves in the CHUNKS block. You may MENTION these "
+            "by their citation so the user knows they exist, but DO NOT cite "
+            "them in `cited_sections` — you haven't read their text. Suggest "
+            "the user check them on legislation.vic.gov.au if relevant."
+        )
+        for cit, ref_text in sorted(related_internal.items())[:20]:
+            parts.append(f"  - {cit} (mentioned in chunks as '{ref_text}')")
+        parts.append("</RELATED_PROVISIONS>")
+    if external:
+        parts.append("\n<EXTERNAL_REFERENCES>")
+        parts.append(
+            "External documents (NCC/BCA, Australian Standards, other Acts) "
+            "referenced by the chunks. These are NOT in our corpus. If the "
+            "user's question depends on them, tell them so explicitly — e.g. "
+            "'this also requires checking AS 3959' — and direct them to the "
+            "relevant publisher (NCC: ncc.abcb.gov.au, AS: standards.org.au, "
+            "Vic Acts: legislation.vic.gov.au)."
+        )
+        for to_text, rel in sorted(external.items())[:20]:
+            kind = {
+                "external_code": "NCC/BCA",
+                "external_standard": "Australian Standard",
+                "external_act": "Other Vic Act",
+            }.get(rel, rel)
+            parts.append(f"  - {to_text}  [{kind}]")
+        parts.append("</EXTERNAL_REFERENCES>")
+    return "\n".join(parts)
+
 
 def format_chunks_for_prompt(chunks: list[dict]) -> str:
     lines = ["<CHUNKS>"]
@@ -400,6 +477,7 @@ def answer_question(
     retriever: Optional[VectorRetriever] = None,
     client: Optional[anthropic.Anthropic] = None,
     chunks: Optional[list[dict]] = None,
+    graph: Optional[CitationGraph] = None,
     skip_query_rewriting: bool = False,
 ) -> AnswerResult:
     """End-to-end pipeline: rewrite → retrieve (multi-query) → Claude → verify.
@@ -458,12 +536,19 @@ def answer_question(
     else:
         retrieved_chunks = candidate_pool[:RETRIEVAL_TOP_N]
 
-    # 3. Build the user message + messages array including history
+    # 3. Build the user message + messages array including history.
+    # Inject related-provisions / external-reference blocks from the
+    # citation graph so the model can mention adjacent provisions and
+    # flag external dependencies (NCC, AS, other Acts) without citing
+    # things it hasn't read.
     chunks_block = format_chunks_for_prompt(retrieved_chunks)
+    related_block = format_related_provisions(retrieved_chunks, graph)
+
     current_user_text = (
         f"MODE: {mode}\n\n"
         f"NEW QUESTION: {question}\n\n"
         f"{chunks_block}\n\n"
+        f"{related_block}\n\n"
         f"Following the rules in the system prompt, answer using ONLY the "
         f"chunks above. The chunks here are FRESH for this turn — do not "
         f"cite a section that isn't in this CHUNKS block, even if you cited "

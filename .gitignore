@@ -30,3 +30,5 @@ test_report*.md
 # embeddings.npy and embeddings_cache.jsonl ARE committed so the deployed
 # app doesn't need to re-embed on every cold start ($$$ + slow). Generated
 # locally by embed_chunks.py.
+# citation_graph.db ARE committed for the same reason. Rebuild with:
+#   python -m lib.citation_graph build

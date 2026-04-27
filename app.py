@@ -34,6 +34,7 @@ _bridge_streamlit_secrets()
 
 from lib.retrieval import VectorRetriever, load_all_chunks
 from lib.answer import answer_question
+from lib.citation_graph import CitationGraph
 
 
 CORPUS_PATHS = ["building_act_chunks.jsonl", "building_regs_chunks.jsonl"]
@@ -56,7 +57,18 @@ def get_retriever():
     return VectorRetriever(chunks), chunks
 
 
+@st.cache_resource(show_spinner="Loading citation graph...")
+def get_citation_graph():
+    try:
+        return CitationGraph()
+    except FileNotFoundError:
+        # If the SQLite DB is missing on Streamlit Cloud, just disable the
+        # graph features rather than crash the app.
+        return None
+
+
 retriever, all_chunks = get_retriever()
+citation_graph = get_citation_graph()
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +257,7 @@ if prompt:
                     mode=mode,
                     retriever=retriever,
                     history=api_history,
+                    graph=citation_graph,
                 )
                 elapsed = time.time() - t0
             except Exception as e:
