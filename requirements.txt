@@ -1,0 +1,6 @@
+pdfplumber>=0.11
+anthropic>=0.96
+voyageai>=0.3
+python-dotenv>=1.0
+streamlit>=1.40
+numpy>=2.0

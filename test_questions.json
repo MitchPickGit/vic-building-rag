@@ -1,0 +1,283 @@
+{
+  "_meta": {
+    "description": "Test questions for Building Act 1993 (Vic) RAG prototype. Each question has the section(s) that contain the correct answer, based on content we've verified exists in the parsed chunks for Parts 3, 4, and 5.",
+    "corpus_scope": "Building Act 1993 (Vic), Parts 3-5 only. Questions requiring Regulations, NCC, or other Parts are explicitly marked 'out_of_scope': true.",
+    "audience_codes": {
+      "H": "Homeowner / owner-builder",
+      "B": "Builder / developer / architect",
+      "BOTH": "Relevant to both audiences"
+    },
+    "difficulty_codes": {
+      "easy": "Direct keyword match, one section answers it",
+      "medium": "Requires reading multiple subsections or understanding structure",
+      "hard": "Cross-references, exceptions, or interpretive judgment needed"
+    },
+    "how_to_use": "Run each question through your retrieval system. Check whether the top-K results include any of the expected_sections. Track hit@1, hit@3, hit@5 as your quality metric. A good prototype should hit@3 >= 80% on easy questions before you worry about medium/hard."
+  },
+
+  "questions": [
+    {
+      "id": 1,
+      "audience": "BOTH",
+      "difficulty": "easy",
+      "q": "What is the penalty for carrying out building work without a building permit?",
+      "expected_sections": ["16(1)", "16B(1)"],
+      "expected_facts": ["500 penalty units (natural person)", "2500 penalty units (body corporate)", "16B is the indictable version with imprisonment up to 5 years"],
+      "notes": "Section 16 is the standard offence; 16B is the aggravated/indictable version. A good answer should distinguish them."
+    },
+    {
+      "id": 2,
+      "audience": "H",
+      "difficulty": "easy",
+      "q": "As an owner of land, am I responsible for making sure a building permit exists before work starts?",
+      "expected_sections": ["16(3)", "16(5)"],
+      "expected_facts": ["Owner must ensure a permit is in force", "Exception if owner engaged a building practitioner/engineer/architect"]
+    },
+    {
+      "id": 3,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "If a builder is named on a permit, what are their compliance obligations?",
+      "expected_sections": ["16(4A)"],
+      "expected_facts": ["Must ensure work is carried out in accordance with the Act, Regulations, permit, and any binding determination", "Penalty 500/2500 units"]
+    },
+    {
+      "id": 4,
+      "audience": "BOTH",
+      "difficulty": "hard",
+      "q": "If my permit gets suspended, is it a defence if I didn't know it had been suspended?",
+      "expected_sections": ["16A(1)", "16A(2)"],
+      "expected_facts": ["Yes if unaware and couldn't reasonably have known", "Not available to architects or engaged building practitioners"]
+    },
+    {
+      "id": 5,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "Who do I apply to for a building permit?",
+      "expected_sections": ["17", "17A"],
+      "expected_facts": ["Application goes to a building surveyor (municipal or private)", "Surveyor must give the owner an information statement"]
+    },
+    {
+      "id": 6,
+      "audience": "H",
+      "difficulty": "easy",
+      "q": "Who can apply for an owner-builder certificate of consent?",
+      "expected_sections": ["25C(1)"],
+      "expected_facts": ["A natural person may apply to the Authority", "For domestic building work on land"]
+    },
+    {
+      "id": 7,
+      "audience": "H",
+      "difficulty": "medium",
+      "q": "Is there a dollar threshold above which I must have an owner-builder certificate of consent?",
+      "expected_sections": ["25B(1)"],
+      "expected_facts": ["Yes, if cost exceeds the prescribed amount", "Penalty 120 penalty units if done without consent"]
+    },
+    {
+      "id": 8,
+      "audience": "BOTH",
+      "difficulty": "medium",
+      "q": "Can a building surveyor refuse to issue a permit?",
+      "expected_sections": ["24", "24A"],
+      "expected_facts": ["Yes, on specified grounds", "Further limitations apply to certain permits"]
+    },
+    {
+      "id": 9,
+      "audience": "B",
+      "difficulty": "hard",
+      "q": "What happens if I need to change the builder named on an existing permit?",
+      "expected_sections": ["25AB", "25AC", "25A"],
+      "expected_facts": ["Must notify the relevant building surveyor", "Surveyor may change the named builder subject to requirements in s24A/24B"]
+    },
+    {
+      "id": 10,
+      "audience": "BOTH",
+      "difficulty": "medium",
+      "q": "If I'm refused a building permit, am I entitled to reasons?",
+      "expected_sections": ["25"],
+      "expected_facts": ["Yes, surveyor must notify applicant in writing without delay and give reasons"]
+    },
+    {
+      "id": 11,
+      "audience": "BOTH",
+      "difficulty": "easy",
+      "q": "Do councils keep a register of building permits?",
+      "expected_sections": ["31", "32"],
+      "expected_facts": ["Yes, councils must keep a register", "Must be available for inspection during office hours", "Records kept for prescribed period"]
+    },
+    {
+      "id": 12,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "What are the mandatory notification stages during building work?",
+      "expected_sections": ["33", "34"],
+      "expected_facts": ["Builder must notify the relevant building surveyor at each mandatory notification stage", "Inspection occurs at those stages", "Penalty 120/600 units"]
+    },
+    {
+      "id": 13,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "Who is allowed to perform building inspections?",
+      "expected_sections": ["35B"],
+      "expected_facts": ["Persons carrying out inspections must be registered"]
+    },
+    {
+      "id": 14,
+      "audience": "B",
+      "difficulty": "hard",
+      "q": "If a building surveyor directs me to fix non-compliant work, what can the direction require?",
+      "expected_sections": ["37A", "37E"],
+      "expected_facts": ["Carry out work so building work complies with Act/Regs/permit", "Stop further work that would prevent inspection"]
+    },
+    {
+      "id": 15,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "Can I appeal or delay a direction to fix building work?",
+      "expected_sections": ["37G", "37HA", "37I"],
+      "expected_facts": ["Extension of time available", "Operation of direction may be stayed", "Direction may be revoked"]
+    },
+    {
+      "id": 16,
+      "audience": "B",
+      "difficulty": "easy",
+      "q": "What happens at the end of building work — what certificate do I need?",
+      "expected_sections": ["38"],
+      "expected_facts": ["Certificate of final inspection"]
+    },
+    {
+      "id": 17,
+      "audience": "H",
+      "difficulty": "easy",
+      "q": "Can I move into a new building before I get an occupancy permit?",
+      "expected_sections": ["39(1)", "39(2)", "40"],
+      "expected_facts": ["No, if the building permit states an occupancy permit is required", "Applies to whole building OR part of a building", "Occupation must be in accordance with the permit", "Penalty 120/600 units"]
+    },
+    {
+      "id": 18,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "Who do I apply to for an occupancy permit?",
+      "expected_sections": ["41", "53"],
+      "expected_facts": ["Application to municipal building surveyor or private building surveyor", "For places of public entertainment, some applications go to the Authority"]
+    },
+    {
+      "id": 19,
+      "audience": "B",
+      "difficulty": "hard",
+      "q": "What is a building manual and when is one required?",
+      "expected_sections": ["41A", "41B", "44A", "44B", "44C"],
+      "expected_facts": ["Must provide draft building manual with occupancy permit application", "Manual must be approved", "Owner and owners corporation have update obligations"]
+    },
+    {
+      "id": 20,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "What are the penalties for providing false information in an occupancy permit application?",
+      "expected_sections": ["44D"],
+      "expected_facts": ["It is an offence to include false or misleading information"]
+    },
+    {
+      "id": 21,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "When can an occupancy permit be cancelled?",
+      "expected_sections": ["71", "72"],
+      "expected_facts": ["Cancellation for fraud", "Cancellation on other grounds"]
+    },
+    {
+      "id": 22,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "Can an occupancy permit be amended after it's issued?",
+      "expected_sections": ["70"],
+      "expected_facts": ["Yes, amendment of permit or approval is provided for"]
+    },
+    {
+      "id": 23,
+      "audience": "H",
+      "difficulty": "easy",
+      "q": "Is temporary occupation of a building allowed before the permanent occupancy permit?",
+      "expected_sections": ["64", "65", "67"],
+      "expected_facts": ["Yes, temporary occupation can be approved", "Specific people may apply", "Determination process for applications"]
+    },
+    {
+      "id": 24,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "For a place of public entertainment, what do I need before running a public event?",
+      "expected_sections": ["49", "50", "51"],
+      "expected_facts": ["Entertainment must not be conducted without appropriate permit", "Place must not be used for public entertainment without compliance", "Use must be in accordance with occupancy permit"]
+    },
+    {
+      "id": 25,
+      "audience": "B",
+      "difficulty": "hard",
+      "q": "Who gets notified when a building permit is issued on a property in a Development Victoria project area?",
+      "expected_sections": ["18A", "32A"],
+      "expected_facts": ["Notice to Development Victoria of application", "Council to notify Development Victoria of issue of permit"]
+    },
+    {
+      "id": 26,
+      "audience": "B",
+      "difficulty": "medium",
+      "q": "What's the process for demolition permits and when can they be suspended?",
+      "expected_sections": ["29A", "29B"],
+      "expected_facts": ["Specific application process for demolition permits", "Suspension of demolition permit pending is provided for"]
+    },
+    {
+      "id": 27,
+      "audience": "BOTH",
+      "difficulty": "hard",
+      "q": "If I'm refused an owner-builder certificate of consent, can I appeal?",
+      "expected_sections": ["25J"],
+      "expected_facts": ["Review by VCAT"]
+    },
+    {
+      "id": 28,
+      "audience": "H",
+      "difficulty": "medium",
+      "q": "How long is an owner-builder certificate of consent valid for, and what does it allow?",
+      "expected_sections": ["25G"],
+      "expected_facts": ["Certificate of consent issued under this section"],
+      "notes": "This is the kind of question where the prototype will need to synthesize — the exact duration may be prescribed by regulation not Act."
+    },
+    {
+      "id": 29,
+      "audience": "BOTH",
+      "difficulty": "easy",
+      "q": "Does an occupancy permit apply to heritage or historic buildings?",
+      "expected_sections": ["28"],
+      "expected_facts": ["Historic buildings and special buildings have specific provisions"]
+    },
+    {
+      "id": 30,
+      "audience": "BOTH",
+      "difficulty": "medium",
+      "q": "Can the Authority refuse to issue a building permit number?",
+      "expected_sections": ["25BB", "25BD", "25BF"],
+      "expected_facts": ["Authority may refuse on specified grounds", "Must notify applicant of refusal", "Review by VCAT available"]
+    },
+
+    {
+      "id": 31,
+      "audience": "H",
+      "difficulty": "easy",
+      "out_of_scope": true,
+      "q": "Do I need a permit to build a pergola under 10 square metres?",
+      "expected_sections": [],
+      "expected_facts": ["Answer lives in Building Regulations 2018 Schedule 3 (exempt building work), not the Act"],
+      "notes": "Included to test whether the system correctly says 'this is answered in the Regulations, not the Act' rather than hallucinating an Act section."
+    },
+    {
+      "id": 32,
+      "audience": "B",
+      "difficulty": "easy",
+      "out_of_scope": true,
+      "q": "What's the maximum stair riser height in a residential building?",
+      "expected_sections": [],
+      "expected_facts": ["Answer is NCC Volume 2 Part 3.9.1, not the Act"],
+      "notes": "Out-of-scope test — should route to NCC, not invent an answer from the Act."
+    }
+  ]
+}

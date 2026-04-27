@@ -1,0 +1,281 @@
+"""
+Streamlit chat UI for the Victorian Building Legislation RAG.
+
+Run locally:
+    streamlit run app.py
+
+Deploy to Streamlit Community Cloud:
+    1. Push this repo to GitHub
+    2. https://share.streamlit.io → New app → point at repo + app.py
+    3. Add VOYAGE_API_KEY and ANTHROPIC_API_KEY in the Secrets panel
+"""
+
+from __future__ import annotations
+
+import os
+import time
+
+import streamlit as st
+
+
+# Streamlit secrets get bridged into env vars BEFORE we import the libs that
+# read os.environ. Locally, .env still works via python-dotenv.
+def _bridge_streamlit_secrets():
+    try:
+        for key in ("VOYAGE_API_KEY", "ANTHROPIC_API_KEY"):
+            if key in st.secrets and not os.environ.get(key):
+                os.environ[key] = st.secrets[key]
+    except (FileNotFoundError, st.errors.StreamlitSecretNotFoundError):
+        # No secrets file locally — rely on .env / env vars
+        pass
+
+
+_bridge_streamlit_secrets()
+
+from lib.retrieval import VectorRetriever, load_all_chunks
+from lib.answer import answer_question
+
+
+CORPUS_PATHS = ["building_act_chunks.jsonl", "building_regs_chunks.jsonl"]
+
+
+# ---------------------------------------------------------------------------
+# Page setup
+# ---------------------------------------------------------------------------
+
+st.set_page_config(
+    page_title="Vic Building Legislation Q&A",
+    page_icon="🏗️",
+    layout="centered",
+)
+
+
+@st.cache_resource(show_spinner="Loading legislation corpus...")
+def get_retriever():
+    chunks = load_all_chunks(CORPUS_PATHS)
+    return VectorRetriever(chunks), chunks
+
+
+retriever, all_chunks = get_retriever()
+
+
+# ---------------------------------------------------------------------------
+# UI
+# ---------------------------------------------------------------------------
+
+st.title("🏗️ Victorian Building Legislation Q&A")
+st.caption(
+    "Prototype Q&A over the Building Act 1993 (Vic) and Building Regulations 2018 (Vic). "
+    f"Corpus: {len(all_chunks):,} indexed provisions."
+)
+
+with st.sidebar:
+    st.header("Settings")
+    mode = st.radio(
+        "Audience",
+        options=["builder", "homeowner"],
+        format_func=lambda m: {
+            "homeowner": "🏠 Homeowner — plain English",
+            "builder": "🔨 Builder — technical, with penalties",
+        }[m],
+        index=0,
+    )
+
+    st.divider()
+    if st.button("🗑️ Reset conversation", use_container_width=True):
+        st.session_state.history = []
+        st.rerun()
+
+    st.divider()
+    st.caption("**Coverage**")
+    st.caption("• Building Act 1993 — Authorised v146 (1 April 2026)")
+    st.caption("• Building Regulations 2018 — Authorised v028 (26 November 2025)")
+    st.caption("• Schedule 3 (exempt building work) — broken out per item")
+    st.caption("Schedules 1, 2, 4-13 of the Regulations are not yet indexed.")
+
+    st.divider()
+    st.caption("**About this prototype**")
+    st.caption(
+        "Answers come from indexed excerpts only. Every cited section number is "
+        "verified against the retrieved passages — the system is designed never "
+        "to invent a citation. If the answer isn't in the corpus, it will say so."
+    )
+    st.caption(
+        "**Not legal advice.** Verify any answer against legislation.vic.gov.au "
+        "or with a registered building surveyor before acting."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Render helper (defined before history replay below)
+# ---------------------------------------------------------------------------
+
+
+def _render_meta(meta: dict):
+    """Render the post-answer metadata (cited sections, retrieved chunks, etc.)."""
+    is_clarification = meta.get("confidence") == "needs_clarification"
+
+    cols = st.columns(3)
+    cols[0].metric("Confidence", meta["confidence"])
+    cols[1].metric(
+        "Cited sections" if not is_clarification else "Citations",
+        len(meta["cited_sections"]) if not is_clarification else "—",
+    )
+    cols[2].metric("Top retrieval score", f"{meta['top_retrieval_score']:.2f}")
+
+    if meta["hallucinated_citations"]:
+        st.error(
+            f"⚠️ The model produced {len(meta['hallucinated_citations'])} citation(s) "
+            f"that don't appear in the retrieved passages: "
+            f"{', '.join(meta['hallucinated_citations'])}. "
+            f"This is a known failure mode the system is designed to catch — do not "
+            f"rely on those particular references."
+        )
+
+    if meta["cited_sections"]:
+        with st.expander("📚 Cited provisions"):
+            for sec in meta["cited_sections"]:
+                st.markdown(f"- `{sec}`")
+            st.caption(
+                "Verify on the official source: "
+                "[Building Act 1993](https://www.legislation.vic.gov.au/in-force/acts/building-act-1993/) "
+                "• [Building Regulations 2018]"
+                "(https://www.legislation.vic.gov.au/in-force/statutory-rules/building-regulations-2018)"
+            )
+
+    if meta.get("rewritten_queries") and len(meta["rewritten_queries"]) > 1:
+        with st.expander(f"🔁 Search queries used ({len(meta['rewritten_queries'])})"):
+            st.caption(
+                "Your question was rewritten into multiple retrieval queries to "
+                "improve coverage of the legislation. The model only sees the "
+                "chunks retrieved by these queries — never the queries themselves."
+            )
+            for q in meta["rewritten_queries"]:
+                st.markdown(f"- `{q}`")
+
+    if meta.get("retrieved_chunks"):
+        with st.expander(f"🔍 View {len(meta['retrieved_chunks'])} retrieved passages"):
+            for i, c in enumerate(meta["retrieved_chunks"], 1):
+                cite = c["citation"]
+                title = c.get("section_title") or ""
+                st.markdown(f"**{i}. {cite}** — {title}")
+                if c.get("part"):
+                    st.caption(f"{c['part']}")
+                st.markdown(
+                    f"> {c.get('text', '')[:500]}"
+                    f"{'…' if len(c.get('text', '')) > 500 else ''}"
+                )
+                if c.get("note"):
+                    st.caption(f"**Note:** {c['note'][:300]}")
+                if c.get("penalty"):
+                    st.caption(f"**Penalty:** {c['penalty']}")
+                if c.get("amendment_history"):
+                    with st.popover("Amendment history"):
+                        st.caption(c["amendment_history"])
+                st.divider()
+
+
+# Chat history sits in session state so prior turns stay visible.
+if "history" not in st.session_state:
+    st.session_state.history = []  # list of {role, content, meta?}
+
+# Replay history
+for turn in st.session_state.history:
+    with st.chat_message(turn["role"]):
+        st.markdown(turn["content"])
+        if "meta" in turn:
+            _render_meta(turn["meta"])
+
+
+# Suggested starter questions (only show when conversation is empty)
+starter_clicked = None
+if not st.session_state.history:
+    st.markdown("**Try asking:**")
+    starter = st.columns(2)
+    starters = [
+        "Do I need a permit for a pergola under 3.6m?",
+        "What's the penalty for building without a permit?",
+        "Can a building surveyor refuse to issue a permit?",
+        "How do I register as a building practitioner?",
+    ]
+    for i, q in enumerate(starters):
+        with starter[i % 2]:
+            if st.button(q, key=f"starter_{i}", use_container_width=True):
+                starter_clicked = q
+
+
+# ---------------------------------------------------------------------------
+# Question input
+# ---------------------------------------------------------------------------
+
+prompt = st.chat_input("Ask a question about the Building Act or Regulations...")
+if not prompt and starter_clicked:
+    prompt = starter_clicked
+
+if prompt:
+    # Render the user turn immediately (before the slow LLM call)
+    st.session_state.history.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Build the conversation history that gets passed into answer_question.
+    # Strip our local meta — only role + content go to the API.
+    api_history = [
+        {"role": t["role"], "content": t["content"]}
+        for t in st.session_state.history[:-1]  # exclude the just-appended user turn
+        if t.get("role") in ("user", "assistant")
+    ]
+
+    # Render assistant turn with spinner
+    with st.chat_message("assistant"):
+        with st.spinner("Searching legislation and drafting answer…"):
+            try:
+                t0 = time.time()
+                result = answer_question(
+                    prompt,
+                    mode=mode,
+                    retriever=retriever,
+                    history=api_history,
+                )
+                elapsed = time.time() - t0
+            except Exception as e:
+                st.error(f"Something went wrong: `{e!r}`")
+                result = None
+
+        if result is not None:
+            # Visually distinguish clarifying questions from full answers
+            if result.confidence == "needs_clarification":
+                st.info(f"💡 **I need a bit more detail to answer this accurately:**\n\n{result.answer}")
+            else:
+                st.markdown(result.answer)
+
+            meta = {
+                "confidence": result.confidence,
+                "cited_sections": result.cited_sections,
+                "hallucinated_citations": result.hallucinated_citations,
+                "top_retrieval_score": result.top_retrieval_score,
+                "retrieved_chunks": result.retrieved_chunks,
+                "rewritten_queries": result.rewritten_queries,
+                "elapsed_s": elapsed,
+            }
+            _render_meta(meta)
+            st.caption(f"⏱️ Generated in {elapsed:.1f}s")
+
+            st.session_state.history.append({
+                "role": "assistant",
+                "content": result.answer,
+                "meta": meta,
+            })
+
+
+# ---------------------------------------------------------------------------
+# Footer
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.caption(
+    "This is a research prototype. Answers are generated by Claude Sonnet 4.6 "
+    "from indexed excerpts of Victorian building legislation. Citations are "
+    "verified against retrieved passages but the prototype may still produce "
+    "errors. **Verify all answers against the official sources before acting.**"
+)
