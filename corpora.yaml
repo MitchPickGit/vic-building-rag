@@ -1,0 +1,96 @@
+# Per-document parsing config for the unified parser (lib/parser.py).
+#
+# Each entry describes a single PDF that gets parsed into a chunks JSONL.
+# The four documents in this corpus all share the same overall shape
+# (PDF -> font-aware line grouping -> heading hierarchy -> per-provision
+# chunk emission) — what differs is the specific regexes, page ranges,
+# and metadata.
+#
+# To add a new document: drop the PDF in docs/, add an entry here, and
+# run: python -m lib.parser <doc_id>
+#
+# Keys per doc entry:
+#   pdf_path                 — relative path to the source PDF
+#   out_path                 — relative path to write chunks JSONL
+#   doc_type                 — schema field (act / regulation / ncc / housing_provisions)
+#   authority_level          — 1=Act, 2=Regs, 3=NCC, 4=HP (used by reranker boost)
+#   version, version_date    — surfaced in chunk citations + UI
+#   citation_template        — Python str.format with {section_number} {subsection}
+#   body_min_size            — minimum font size to count as body
+#   margin_max_size          — max font size to treat as margin annotation
+#   apply_pua_translation    — whether to translate Symbol-font glyphs (Vic only)
+#   apply_margin_attribution — whether to attach margin amendment notes (Vic only)
+#   page_ranges              — list of (start, end, label) printed-or-PDF ranges
+#                              with optional offset_to_pdf for printed->PDF
+#   headings.<level>.regex   — pattern that captures (id, title)
+#   headings.<level>.size_min — min font size for that heading level
+#   headings.<level>.x0_max  — optional left-column constraint (avoid mid-line bold)
+#   subprovision_regex       — pattern for "(1)", "(a)" subprovision markers
+#   running_header_patterns  — regex list to drop as boilerplate
+#
+# Document-specific extras live under `extras` with free-form keys; the
+# parser picks them up only if it knows them (e.g. NCC's subpart names).
+
+documents:
+
+  ncc_v2:
+    pdf_path: docs/ncc2022-volume-two.pdf
+    out_path: ncc_chunks.jsonl
+    doc_type: ncc
+    authority_level: 3
+    version: "NCC 2022 Volume Two (Amendment 1, 1 May 2023)"
+    version_date: "2023-05-01"
+    edition: "NCC 2022 Vol 2"
+    licence: "CC BY 4.0 (Australian Building Codes Board)"
+    citation_template: "NCC 2022 Vol 2 {section_number}{subsection}"
+    body_min_size: 9.5
+    margin_max_size: 9.0
+    apply_pua_translation: false
+    apply_margin_attribution: false
+    page_ranges:
+      - { start: 32, end: 75,  label: "Section A",   header: "Section A Governing requirements" }
+      - { start: 81, end: 154, label: "Section H",   header: "Section H Class 1 and 10 buildings" }
+      - { start: 155, end: 194, label: "Schedule 1", header: "Schedule 1 Definitions" }
+      - { start: 197, end: 212, label: "Schedule 2", header: "Schedule 2 Referenced documents" }
+      - { start: 284, end: 298, label: "Schedule 10", header: "Schedule 10 Victoria" }
+    headings:
+      part:           # NCC "Part A1 Interpreting the NCC" / "Part H6 Energy efficiency"
+        regex: '^\s*Part\s+([A-Z]\d+)\s+(.+?)\s*$'
+        size_min: 11.5
+      schedule:
+        regex: '^\s*Schedule\s+(\d+)\s+(.+?)\s*$'
+        size_min: 13.5
+      specification:
+        regex: '^\s*Specification\s+(\d+)\s+(.+?)\s*$'
+        size_min: 11.5
+      provision:      # "A1G1 Scope of NCC Volume One" / "VIC H1D10 Flood hazard areas"
+        regex: '^\s*(?:(?P<vic>VIC)\s+)?(?P<id>[A-Z]\d+[A-Z]\d+(?:[a-z])?)\s+(?P<title>.+?)\s*$'
+        size_min: 11.5
+        x0_max: 999     # NCC headings can be anywhere; no x-constraint
+      section:
+        regex: '^\s*Section\s+([A-Z])\s+(.+?)\s*$'
+        size_min: 13.5
+      # NCC's distinctive subpart headings — Governing/Performance/Deemed-to-Satisfy
+      subpart_named:
+        names:
+          - "Governing Requirements"
+          - "Performance Requirements"
+          - "Deemed-to-Satisfy Provisions"
+          - "Verification Methods"
+          - "Functional Statements"
+          - "Objectives"
+          - "Introduction"
+        prefixed_with: "Introduction to "
+    subprovision_regex: '^\s*\((\d+[A-Z]*)\)\s+(.*)$'
+    running_header_patterns:
+      - '^\s*Governing requirements\s*$'
+      - '^\s*Class 1 and 10 buildings\s*$'
+      - '^\s*Schedule \d+\s*$'
+      - '^\s*Victoria\s*$'
+      - '^\s*NCC 2022 Volume Two.*Page\s+\d+\s*$'
+      - '^\s*\d+\s*$'
+      - '^\s*[A-Z]\d+[A-Z]\d+\s*$'  # provision-id reprint at top of continuation
+    extras:
+      vic_prefix_supported: true
+      cross_version_tag_regex: '\[(\d{4}):\s*[^\]]+\]|\[New for \d{4}\]'
+      filter_empty_parents: true
