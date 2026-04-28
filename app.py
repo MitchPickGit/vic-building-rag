@@ -36,7 +36,7 @@ def _bridge_streamlit_secrets():
 _bridge_streamlit_secrets()
 
 from lib.retrieval import VectorRetriever, load_all_chunks
-from lib.answer import answer_question
+from lib.answer import answer_question, AnswerTruncated
 from lib.citation_graph import CitationGraph
 from lib.permit_classifier import classify as classify_permits
 from lib import usage_log
@@ -570,6 +570,7 @@ if prompt:
         result = None
         elapsed = 0.0
         error_msg: str | None = None
+        truncated = False
         with st.spinner("Searching legislation and drafting answer…"):
             try:
                 t0 = time.time()
@@ -581,6 +582,21 @@ if prompt:
                     graph=citation_graph,
                 )
                 elapsed = time.time() - t0
+            except AnswerTruncated as e:
+                error_msg = repr(e)
+                truncated = True
+                elapsed = time.time() - t0
+                st.warning(
+                    "⚠️ **The answer was cut off mid-response.** This usually "
+                    "means the question is complex enough that the model ran "
+                    "out of room to write the full reply.\n\n"
+                    "**What to try**: ask a more focused version of the "
+                    "question, or split it into two questions. For example, "
+                    "instead of *'do I need a permit AND what are the "
+                    "exemptions AND what does the council need?'*, ask just "
+                    "the first part and follow up with the rest."
+                )
+                st.caption(f"Internal: {e}")
             except Exception as e:
                 error_msg = repr(e)
                 st.error(f"Something went wrong: `{e!r}`")

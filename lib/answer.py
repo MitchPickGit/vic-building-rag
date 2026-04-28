@@ -59,9 +59,27 @@ USE_AUTHORITY_BOOST = True     # toggle for ablation testing
 OOS_GATE = 0.10               # below this → canned OOS (very rarely fires;
                               # the strict-citation prompt is the real gate)
 
-MAX_TOKENS = 8192             # adaptive thinking shares this budget
+MAX_TOKENS = 16384            # adaptive thinking shares this budget. At
+                              # 8192 we still saw truncation on complex
+                              # multi-provision answers; 16K gives the
+                              # longest legitimate legal analysis enough
+                              # room without hitting the SDK's non-
+                              # streaming HTTP timeout.
 
 Mode = Literal["homeowner", "owner-builder", "builder"]
+
+
+class AnswerTruncated(RuntimeError):
+    """Raised when the model's response was cut off by max_tokens or by
+    structured-output JSON malformation. The Streamlit UI catches this
+    and renders a clean retry message instead of dumping the partial
+    JSON to the user (which is what the deck-permit-query bug did).
+    """
+    def __init__(self, message: str, stop_reason: Optional[str] = None,
+                 partial: Optional[str] = None):
+        super().__init__(message)
+        self.stop_reason = stop_reason
+        self.partial = partial
 
 
 # ---------------------------------------------------------------------------
@@ -742,6 +760,18 @@ def answer_question(
         },
     )
 
+    # Check stop_reason FIRST — if the model got cut off by max_tokens
+    # the JSON won't be syntactically complete and we shouldn't try to
+    # render the partial output as an answer.
+    stop_reason = getattr(response, "stop_reason", None)
+    if stop_reason == "max_tokens":
+        raise AnswerTruncated(
+            f"Response was cut off (stop_reason=max_tokens). The question "
+            f"likely required more tokens than the budget allows.",
+            stop_reason=stop_reason,
+            partial=(response.content[0].text[:500] if response.content else None),
+        )
+
     text_blocks = [b.text for b in response.content if b.type == "text"]
     if not text_blocks:
         raise RuntimeError(
@@ -750,13 +780,44 @@ def answer_question(
     try:
         parsed = json.loads(text_blocks[0])
     except json.JSONDecodeError as e:
-        # Surface a useful error rather than silent failure
-        raise RuntimeError(
-            f"Model returned malformed JSON ({e}). First 200 chars: "
-            f"{text_blocks[0][:200]!r}"
+        # Surface a useful error rather than silent failure. Most often
+        # this happens because of mid-string truncation that even
+        # structured output's auto-repair can't salvage.
+        raise AnswerTruncated(
+            f"Model returned malformed JSON ({e}). Likely truncated mid-output.",
+            stop_reason=stop_reason,
+            partial=text_blocks[0][:500],
         )
 
-    cited = parsed["cited_sections"]
+    cited = parsed.get("cited_sections") or []
+    # Prose-shaped-citation heuristic: real citation IDs are short
+    # ("16(1)", "Sch 3 item 16", "NCC H6P1", "HP 11.2.2"). If any cited
+    # entry contains spaces and looks like a sentence (long, has commas
+    # or quoted text or full stops), the structured output got mangled
+    # and answer-text leaked into the citations array. Treat as truncation.
+    def _looks_like_prose(s: str) -> bool:
+        if not isinstance(s, str):
+            return False
+        if len(s) > 80:
+            return True
+        # Heuristic markers of prose: full sentence punctuation, double
+        # quotes (which legit citations don't contain), or multi-comma.
+        if '"' in s or "”" in s or s.count(",") >= 2:
+            return True
+        if s.rstrip().endswith(".") and len(s) > 30:
+            return True
+        return False
+
+    prose_leaks = [c for c in cited if _looks_like_prose(c)]
+    if prose_leaks:
+        raise AnswerTruncated(
+            f"Citation list contains prose fragments — output was structurally "
+            f"malformed even though it parsed as JSON. Leaked entries: "
+            f"{prose_leaks[:2]!r}",
+            stop_reason=stop_reason,
+            partial=parsed.get("answer", "")[:500] if isinstance(parsed.get("answer"), str) else None,
+        )
+
     hallucinated = verify_citations(cited, retrieved_chunks)
 
     return AnswerResult(
