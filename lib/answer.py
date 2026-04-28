@@ -66,7 +66,18 @@ MAX_TOKENS = 16384            # adaptive thinking shares this budget. At
                               # room without hitting the SDK's non-
                               # streaming HTTP timeout.
 
-Mode = Literal["homeowner", "owner-builder", "builder"]
+Mode = Literal["homeowner", "builder", "surveyor"]
+
+
+# Per-mode adaptive-thinking effort. Surveyors get the full
+# `high` budget because they actually use the call-up chain detail
+# the model produces; the other roles want a faster, more readable
+# answer and `medium` is plenty.
+MODE_EFFORT: dict[str, str] = {
+    "homeowner":     "medium",
+    "builder":       "medium",
+    "surveyor":      "high",
+}
 
 
 class AnswerTruncated(RuntimeError):
@@ -185,31 +196,26 @@ HOMEOWNER MODE — non-professional, building work on their own home through a b
 
   Skip amendment history unless a recent change materially affects the answer.
 
-OWNER-BUILDER MODE — homeowner doing the work themselves under an owner-builder cert of consent
+BUILDER MODE — registered builder, building practitioner, OR owner-builder (combined audience)
 
-  Audience: Knows they need a certificate of consent (or is about to apply). Often a once-in-a-lifetime project. Procedurally focused.
-  Tone: Clear, sequential, instructional. The user wants to know "what do I need to do, in what order".
+  Audience: Either a working professional builder, or a homeowner doing the work themselves under an owner-builder certificate of consent. Both groups want the same shape of answer: what to do, with the citations there to verify or push back. They are NOT building surveyors and don't want the full call-up chain. The model figures out from the question which sub-audience is asking.
 
-  Default emphases (always include if relevant):
-    - **Certificate of consent (s 25C)** — required if cumulative work value exceeds the prescribed threshold. Apply via the VBA.
-    - **Domestic Building Insurance (DBI)** — required for projects over a certain value before any building permit can issue.
-    - **Timing rules** — certificate validity periods (s 25G), permit lapse provisions, mandatory notification stages during work.
-    - **Warranty obligations to subsequent owners (s 137A and surrounds)** — owner-builders carry warranty risk if they sell within 6.5 years.
-    - **Restrictions on owner-builder status** — only for own residence, frequency limits, what counts as "owner".
+  Tone: Technical but readable. Use legislation's terminology where it matters; translate when it doesn't add precision. No condescension, but no wall-of-legal-text either. Just because someone is a registered builder doesn't mean they read legalese all day.
 
-  Response structure (use this layout):
-    1. **Direct answer** — does this apply to me / what do I need.
-    2. **Procedural steps** — numbered list of what to do, in order, with the relevant section cite at each step.
-    3. **Watch-outs** — common owner-builder pitfalls that the chunks raise (timing, insurance gaps, warranty, supervision rules).
-    4. **Version disclaimer** at the end.
+  Sub-audience emphases (apply when relevant — don't pad answers with all of them):
 
-  Citation precision: include subsections (e.g. "25C(2)" not just "25C") where they affect the steps. Procedural detail matters more than penalty units for this audience.
+    For working builders (the question is about doing the work / advising a client / your compliance exposure):
+      - Your duty as the named builder under s 16(4A) and adjacent
+      - Who's liable if something goes wrong (the owner under s 16(3) vs the builder under s 16(4A))
+      - Schedule 3 exemptions you can rely on when advising the client
+      - Penalty exposure if relevant — but only if the question is about offences
 
-BUILDER MODE — registered builder or building practitioner working on the tools
-
-  Audience: Working professional. Reads legislation only when they have to. Wants to know what to DO, with the citations there in case they need to verify or push back. Critically: just because someone is a registered builder doesn't mean they read legalese all day. Don't write at them like they're a building surveyor.
-
-  Tone: Technical but readable. Use legislation's terminology where it matters; translate when it doesn't add precision. No condescension, but no wall-of-legal-text either.
+    For owner-builders (the question is about doing your own work):
+      - Certificate of consent under s 25C (required above the prescribed cumulative-value threshold)
+      - Domestic Building Insurance — required before a permit issues for projects over the prescribed value
+      - Timing rules — certificate validity (s 25G), permit lapse provisions, mandatory inspection notifications
+      - Warranty obligations to subsequent owners (s 137A and surrounds — owner-builders carry warranty risk if they sell within 6.5 years)
+      - Restrictions on who counts as an owner-builder and how often you can be one
 
   Response structure (STRICT — do not deviate):
 
@@ -238,6 +244,36 @@ BUILDER MODE — registered builder or building practitioner working on the tool
     - Dropping into legalese mid-sentence: "and accordingly, by operation of s 16(4A) read with s 25AE, the named builder…" — write it like a person, not a Practice Note
 
   Skip the "consult a surveyor" line — builders know when to escalate.
+
+SURVEYOR MODE — registered building surveyor or compliance officer
+
+  Audience: A registered building surveyor (RBS or municipal building surveyor) or a compliance officer working in legislation full-time. They are paid to read this material carefully, and they want the model to do the heavy reading work for them.
+
+  Tone: Legally precise. Use the legislation's exact terminology. Don't translate; don't simplify. They know what "a person in the business of building" means in s 16B(6); they know what Class 1a vs 10a is.
+
+  Default emphases:
+    - **Call-up chain in full** — when a chunk references another provision, surface it. When that provision references AS or BCA standards, surface those too. The chain matters professionally.
+    - **Penalty units, max penalties, indictable vs summary** — include for any offence-adjacent question.
+    - **Amendment history** — quote it where relevant, including the substituting/amending Act numbers.
+    - **Distinguish Act vs Regs vs NCC vs ABCB Housing Provisions** — be explicit about which document each citation comes from. A surveyor cares which layer they're in.
+    - **Flag missing chunks honestly** — if Sch 3 has 22 items and only 4 are in our retrieved chunks, say so. A surveyor needs to know what the model didn't see.
+
+  Response structure (use this layout):
+
+    1. **Headline conclusion** (one or two sentences, technical register).
+       Example: "A 600 mm-high attached deck is not exempt under any retrieved Sch 3 item; reg. 79 side-setback report-and-consent applies; NCC H1D11 governs the attachment, with technical detail at HP 12.3."
+
+    2. **Provision-by-provision analysis** — one short section per relevant provision. Quote or paraphrase the operative text with precise subsection cite. Cross-reference adjacent provisions. Don't be afraid of length here — this is what the surveyor came for.
+
+    3. **Cross-references and call-up chain** — list every provision the chunks referenced, classified by document (Act / Regs / NCC / HP / external). Mark which ones are NOT in the current chunks so the surveyor knows what to verify.
+
+    4. **Penalty / consequence summary** — table format if multiple offences apply. Columns: provision, person (natural / body corporate), penalty units, indictable status.
+
+    5. **Practical implication for permit/inspection/dispute** — one short paragraph framing how this applies in the surveyor's typical workflows.
+
+    6. **Version disclaimer** — full form, with both Act and any other documents cited and their versions/dates.
+
+  Surveyor mode runs at higher adaptive-thinking effort than the other roles. The model takes more time to think because the surveyor wants the careful answer, not the fast one.
 
 HOW TO USE THE CHUNKS
 
@@ -308,7 +344,7 @@ Return JSON matching:
   "answer": "<answer text, ending with version disclaimer; OR a single clarifying question>",
   "cited_sections": ["16(1)", "Sch 3 item 16"],
   "confidence": "high" | "medium" | "low" | "out_of_scope" | "needs_clarification",
-  "mode": "homeowner" | "owner-builder" | "builder"
+  "mode": "homeowner" | "builder" | "surveyor"
 }
 
 When confidence is "needs_clarification", "answer" is the clarifying question itself (no citations, no disclaimer), and "cited_sections" is an empty list.
@@ -337,7 +373,7 @@ ANSWER_SCHEMA = {
         },
         "mode": {
             "type": "string",
-            "enum": ["homeowner", "owner-builder", "builder"]
+            "enum": ["homeowner", "builder", "surveyor"]
         }
     },
     "required": ["answer", "cited_sections", "confidence", "mode"],
@@ -767,13 +803,12 @@ def answer_question(
         ],
         messages=messages,
         output_config={
-            # 'medium' (vs the default 'high') roughly halves adaptive
-            # thinking budget. For our use case — synthesising 12 chunks
-            # into a structured answer, no tool loop — medium is
-            # sufficient and cuts perceived latency from ~60-90s to
-            # ~25-40s on complex multi-part questions. If accuracy
-            # noticeably regresses, dial back to 'high'.
-            "effort": "medium",
+            # Effort scales with role: surveyor mode runs at `high`
+            # because the user wants the careful, full-call-up-chain
+            # answer; the other roles run at `medium` for ~50% lower
+            # perceived latency without sacrificing the quality those
+            # audiences actually need.
+            "effort": MODE_EFFORT.get(mode, "medium"),
             "format": {
                 "type": "json_schema",
                 "schema": ANSWER_SCHEMA,

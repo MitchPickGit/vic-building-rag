@@ -267,20 +267,25 @@ with st.sidebar:
     st.header("Settings")
     mode = st.radio(
         "Who are you?",
-        options=["homeowner", "owner-builder", "builder"],
+        options=["homeowner", "builder", "surveyor"],
         format_func=lambda m: {
-            "homeowner": "🏠 Homeowner — building work through a builder",
-            "owner-builder": "🛠️ Owner-builder — doing the work yourself",
-            "builder": "🔨 Builder / Surveyor — registered practitioner",
+            "homeowner": "🏠 Homeowner — work done through a builder",
+            "builder": "🔨 Builder / Owner-builder — concise, practical",
+            "surveyor": "📐 Building Surveyor — full detail, deeper analysis",
         }[m],
         index=0,
         help=(
-            "**Homeowner**: plain-English answers, redirects to surveyor / council / "
-            "owners corp where relevant.  \n"
-            "**Owner-builder**: procedural step-by-step, emphasising certificate of "
-            "consent, insurance, timing, and warranty obligations.  \n"
-            "**Builder**: technical detail with full citations, penalties, "
-            "amendment history, and cross-references."
+            "**Homeowner**: plain-English answers, redirects to surveyor / "
+            "council / owners corp where relevant.\n\n"
+            "**Builder / Owner-builder**: bottom-line answer + actionable "
+            "steps + the detail, in that order. Covers both working builders "
+            "and homeowners doing the work under an owner-builder cert. "
+            "Faster (medium thinking effort) — designed to set expectations or "
+            "to learn before talking to a surveyor.\n\n"
+            "**Building Surveyor**: full technical detail, complete call-up "
+            "chain, penalty tables, distinguishes Act/Regs/NCC/HP layers "
+            "explicitly. Higher thinking effort — slower but more thorough. "
+            "Use when you actually want to read the legislation."
         ),
     )
 
