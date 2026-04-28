@@ -595,6 +595,33 @@ def make_oos_result(question: str, mode: Mode, top_score: float,
     )
 
 
+def expand_full_schedule_3(top_chunks: list[dict],
+                           all_chunks_by_citation: dict[str, dict]) -> list[dict]:
+    """When at least one Schedule 3 item appears in the candidate pool,
+    pull in ALL 22 Sch 3 items.
+
+    Schedule 3 is the exemptions table — questions about whether a permit
+    is required or what's exempt are cheaply answered by seeing the full
+    list. The full table is small (~7K tokens) and adding it eliminates
+    the 'I only have items 1 and 4 — there might be others' hedging that
+    used to appear in answers.
+
+    Cost: roughly $0.02 extra per query that hits this path. Worth it for
+    the answer-quality lift on exemption-shaped queries.
+    """
+    have_any_sch3 = any(c.get("doc_type") == "regulation_schedule"
+                        for c in top_chunks)
+    if not have_any_sch3:
+        return list(top_chunks)
+    seen = {c["citation"] for c in top_chunks}
+    added = []
+    for c in all_chunks_by_citation.values():
+        if c.get("doc_type") == "regulation_schedule" and c["citation"] not in seen:
+            added.append(c)
+            seen.add(c["citation"])
+    return list(top_chunks) + added
+
+
 def expand_one_hop(top_chunks: list[dict],
                    all_chunks_by_citation: dict[str, dict],
                    graph: Optional[CitationGraph],
@@ -727,13 +754,20 @@ def answer_question(
     # of the Act. Vector retrieval finds the Sch 3 chunk; one-hop brings s 16
     # along even if the embedding didn't surface it directly. Skipped if the
     # graph isn't available.
+    all_by_citation = {c["citation"]: c for c in retriever.chunks}
     if USE_ONE_HOP and graph is not None:
-        all_by_citation = {c["citation"]: c for c in retriever.chunks}
         candidate_pool = expand_one_hop(
             candidate_pool, all_by_citation, graph,
             expand_from=ONE_HOP_EXPANSION_FROM,
             max_added=ONE_HOP_MAX_ADDED,
         )
+
+    # 2c. Schedule 3 full-table expansion. If any Sch 3 item is in the pool,
+    # pull in all 22. Schedule 3 is the exemptions table; the user's question
+    # about whether something is exempt is best answered against the full
+    # list, not 2 randomly-retrieved items. Eliminates the "I only have
+    # items 1 and 4" hedging in answers.
+    candidate_pool = expand_full_schedule_3(candidate_pool, all_by_citation)
 
     # 3. Rerank against the original user question.
     # The reranker is a cross-encoder that judges (query, doc) jointly,
